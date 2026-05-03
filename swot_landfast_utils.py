@@ -603,6 +603,187 @@ def component_sensitivity_table(
     return pd.DataFrame(rows)
 
 
+def smi_variogram(
+    smi: np.ndarray,
+    valid: np.ndarray,
+    lon: np.ndarray,
+    lat: np.ndarray,
+    max_distance_m: float = 60_000,
+    n_bins: int = 24,
+    n_sample: int = 6000,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Empirical semi-variogram of the SMI in projected metric coordinates.
+
+    Returns a DataFrame with columns: distance_m, semivariance, n_pairs.
+    Subsamples up to n_sample valid pixels to keep runtime tractable.
+    """
+    rng = np.random.default_rng(seed)
+    lon_v = lon[valid].ravel()
+    lat_v = lat[valid].ravel()
+    val_v = smi[valid].ravel()
+    finite = np.isfinite(val_v)
+    lon_v, lat_v, val_v = lon_v[finite], lat_v[finite], val_v[finite]
+
+    if len(lon_v) > n_sample:
+        idx = rng.choice(len(lon_v), n_sample, replace=False)
+        lon_v, lat_v, val_v = lon_v[idx], lat_v[idx], val_v[idx]
+
+    transformer = local_projector(lon_v, lat_v)
+    x, y = transformer.transform(lon_v, lat_v)
+    pts = np.column_stack([x, y])
+
+    from scipy.spatial.distance import pdist
+    dists = pdist(pts)
+    i_idx, j_idx = np.triu_indices(len(val_v), k=1)
+    sq_diff = (val_v[i_idx] - val_v[j_idx]) ** 2
+
+    keep = dists <= max_distance_m
+    dists, sq_diff = dists[keep], sq_diff[keep]
+
+    bin_edges = np.linspace(0, max_distance_m, n_bins + 1)
+    bin_idx = np.digitize(dists, bin_edges) - 1
+    rows = []
+    for b in range(n_bins):
+        mask = bin_idx == b
+        if mask.sum() < 10:
+            continue
+        rows.append({
+            "distance_m": float((bin_edges[b] + bin_edges[b + 1]) / 2),
+            "semivariance": float(np.mean(sq_diff[mask]) / 2),
+            "n_pairs": int(mask.sum()),
+        })
+    return pd.DataFrame(rows)
+
+
+def feature_shape_metrics(
+    feature_labels: np.ndarray,
+    spacing: dict[str, float],
+    min_pixels: int = 10,
+) -> pd.DataFrame:
+    """Orientation, eccentricity, and elongation for each labelled high-index feature.
+
+    Uses skimage regionprops on the label image. Orientation is in degrees clockwise
+    from the across-track (column) axis.
+    """
+    from skimage.measure import regionprops
+
+    pixel_area_km2 = spacing["along_m"] * spacing["across_m"] / 1e6
+    rows = []
+    for prop in regionprops(feature_labels):
+        if prop.num_pixels < min_pixels:
+            continue
+        # prop.orientation is in radians, counter-clockwise from column axis
+        angle_deg = float(np.degrees(prop.orientation))
+        rows.append({
+            "feature_id": int(prop.label),
+            "area_km2": float(prop.num_pixels * pixel_area_km2),
+            "eccentricity": float(prop.eccentricity),
+            "orientation_deg": angle_deg,
+            "axis_major_km": float(prop.axis_major_length * spacing["along_m"] / 1000),
+            "axis_minor_km": float(prop.axis_minor_length * spacing["along_m"] / 1000),
+            "elongation": float(
+                prop.axis_major_length / prop.axis_minor_length
+                if prop.axis_minor_length > 0 else np.nan
+            ),
+        })
+    return pd.DataFrame(rows)
+
+
+def download_bathymetry(
+    lon_min: float,
+    lon_max: float,
+    lat_min: float,
+    lat_max: float,
+    cache_dir: str | Path = "data/raw",
+    resolution_deg: float = 0.01,
+) -> xr.Dataset:
+    """Download GEBCO 2023 bathymetry for a bounding box, cached as a NetCDF.
+
+    Falls back to ETOPO 2022 via NOAA ERDDAP if GEBCO is unavailable.
+    Elevation values are in metres; negative = below sea level.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tag = f"{lat_min:.2f}_{lat_max:.2f}_{lon_min:.2f}_{lon_max:.2f}"
+    cache_path = cache_dir / f"gebco_bathy_{tag}.nc"
+    if cache_path.exists():
+        return xr.open_dataset(cache_path)
+
+    # ---- primary: GEBCO 2023 REST download API ----
+    try:
+        url = "https://download.gebco.net/"
+        params = {
+            "format": "netCDF4_compressed",
+            "north": lat_max,
+            "south": lat_min,
+            "west": lon_min,
+            "east": lon_max,
+        }
+        r = requests.get(url, params=params, timeout=180)
+        r.raise_for_status()
+        import io
+        ds = xr.open_dataset(io.BytesIO(r.content))
+        ds.to_netcdf(cache_path)
+        return ds
+    except Exception:
+        pass
+
+    # ---- fallback: ETOPO 2022 via NOAA ERDDAP ----
+    step = max(1, int(round(resolution_deg / (1 / 60))))  # convert deg to arcminute steps
+    erddap = (
+        "https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo360.nc"
+        f"?altitude[({lat_min}):{step}:({lat_max})][({lon_min % 360}):{step}:({lon_max % 360})]"
+    )
+    r = requests.get(erddap, timeout=180)
+    r.raise_for_status()
+    import io
+    ds = xr.open_dataset(io.BytesIO(r.content))
+    # Normalise to 'elevation' variable name and -180/180 longitude.
+    if "altitude" in ds:
+        ds = ds.rename({"altitude": "elevation"})
+    if "longitude" in ds:
+        ds["longitude"] = lon_to_180(ds["longitude"])
+        ds = ds.rename({"longitude": "lon", "latitude": "lat"})
+    ds.to_netcdf(cache_path)
+    return ds
+
+
+def smi_by_depth_bin(
+    smi: np.ndarray,
+    depth: np.ndarray,
+    valid: np.ndarray,
+    high_index: np.ndarray,
+    bins: list[float] | None = None,
+) -> pd.DataFrame:
+    """Summarise SMI statistics and high-index fraction by water depth bin.
+
+    Depth should be in metres (negative = below sea level).
+    """
+    if bins is None:
+        bins = [0, -5, -10, -20, -40, -100, -np.inf]
+    smi_flat = smi[valid].ravel()
+    depth_flat = depth[valid].ravel()
+    hi_flat = high_index[valid].ravel()
+    finite = np.isfinite(smi_flat) & np.isfinite(depth_flat)
+    smi_flat, depth_flat, hi_flat = smi_flat[finite], depth_flat[finite], hi_flat[finite]
+
+    rows = []
+    for lo, hi_bound in zip(bins[:-1], bins[1:]):
+        # lo >= hi_bound since depth is negative
+        mask = (depth_flat <= lo) & (depth_flat > hi_bound)
+        if mask.sum() == 0:
+            continue
+        rows.append({
+            "depth_bin": f"{int(hi_bound)} to {int(lo)} m" if np.isfinite(hi_bound) else f"< {int(lo)} m",
+            "n_pixels": int(mask.sum()),
+            "mean_smi": float(np.nanmean(smi_flat[mask])),
+            "p90_smi": float(np.nanpercentile(smi_flat[mask], 90)),
+            "high_index_fraction": float(hi_flat[mask].mean()),
+        })
+    return pd.DataFrame(rows)
+
+
 def make_common_grid(
     lon_arrays: list[np.ndarray],
     lat_arrays: list[np.ndarray],

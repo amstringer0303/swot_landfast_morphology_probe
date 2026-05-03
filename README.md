@@ -1,18 +1,25 @@
-# SWOT Landfast Ice Morphology Index Probe
+# 2D Spatial Structure of Sea-Ice Morphology from SWOT KaRIn
 
-## Objective
+## Core question
 
-Prototype a candidate stability-relevant morphology index from SWOT KaRIn 2D height/freeboard and backscatter fields for Beaufort Sea landfast-ice analysis.
+Every published SWOT sea-ice paper treats the swath as a wide along-track altimeter.
+ICESat-2, CryoSat-2, and all prior instruments are inherently one-dimensional.
+SWOT is the first spaceborne instrument with continuous 2D Ka-band height and backscatter at ~250 m resolution across a 100 km swath.
 
-Core question:
+**What is the 2D spatial structure -- correlation length, anisotropy, feature orientation -- of sea-ice morphology as measured by SWOT KaRIn? Does it change between seasons?**
 
-Can local roughness, height-gradient, and backscatter-texture metrics from SWOT KaRIn identify coherent landfast-ice morphology features that are plausibly relevant to mechanical stability?
+This cannot be answered with along-track data alone.
 
-## Novelty Position
+## Novelty position
 
-This prototype is not claiming that SWOT ridge mapping itself is new. Existing work has already demonstrated SWOT's utility for sea-ice morphology, freeboard, lead/floe discrimination, velocity, and ridging in Beaufort Sea landfast ice.
+This prototype is not claiming that SWOT ridge detection is novel. Kacimi et al. (2025, GRL) demonstrated lead/floe discrimination and freeboard. A May 2025 ESS preprint used this same dataset to show ridge detection, 3D freeboard, and daily velocity. Neither paper characterises the 2D spatial structure of the morphology field.
 
-The seed idea is that SWOT-derived 2D morphology may become useful as an input to landfast-ice stability, persistence, anchoring, or breakout-susceptibility analysis. The present notebook only develops and stress-tests the morphology index; future work must validate it against SAR persistence, breakout timing, bathymetry, or models.
+The specific additions here:
+1. A stability morphology index (SMI) combining height roughness, gradient, and backscatter texture.
+2. Algorithmic uncertainty quantification (window, threshold, component sensitivity).
+3. Multi-date Jaccard persistence analysis across three scenes (one-day and two-month separation).
+4. Bathymetric context confirming the scene is over deep Beaufort Basin (3000-3700 m) -- grounded ridge anchoring is not applicable; future grounding work needs coastal scenes.
+5. **Semi-variogram, spatial correlation length (~40 km), feature orientation, and elongation metrics** -- the first characterisation of 2D spatial structure from SWOT KaRIn sea-ice data.
 
 ## Dataset
 
@@ -69,6 +76,15 @@ The notebook:
 
 ### Multi-date SMI persistence across three Region 02 scenes (April 9, April 10, June 16)
 ![SMI persistence map](figures/smi_persistence_region02_left.png)
+
+### ICESat-2 roughness correlation: SMI vs |h20m - h500m| (Spearman rho = 0.194, p < 0.001)
+![ICESat-2 scatter](figures/smi_ic2_roughness_scatter_region02_left_gt2l.png)
+
+### Bathymetric context: scene is over deep Beaufort Basin (3000-3700 m)
+![Bathymetry context](figures/smi_bathymetry_context_region02.png)
+
+### 2D spatial structure: semi-variogram (~40 km correlation length), feature orientation and elongation
+![2D spatial structure](figures/smi_2d_spatial_structure_region02.png)
 
 ## Outputs
 
