@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swot-landfast-morphology-probe"
+version = "0.1.0"
+description = "Prototype SWOT KaRIn sea-ice morphology-index utilities and notebook."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib",
+    "netCDF4",
+    "numpy",
+    "pandas",
+    "pyproj",
+    "requests",
+    "scikit-image",
+    "scipy",
+    "xarray",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+py-modules = ["swot_landfast_utils"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

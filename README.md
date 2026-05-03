@@ -36,6 +36,15 @@ Primary prototype case:
 
 The selected Region 02 SWOT and ICESat-2 files overlap spatially, but the ICESat-2 pass is 8 days earlier than the SWOT scene. The notebook treats that comparison as partial spatial support, not definitive validation.
 
+## Supported SWOT inputs
+
+`open_swot()` now standardizes two input conventions:
+
+- UMD Zenodo sea-ice files with `sea_ice_height` or `freeboard`, `backscatter`, `latitude`, and `longitude`.
+- SWOT L2 KaRIn-style left/right swath groups with `ssh_karin`, `sig0_karin`, `latitude`, and `longitude`.
+
+The reader returns a common xarray Dataset with `height`, `sigma0`, `lat`, and `lon`. For non-standard derived products, pass `height_var=` and `sigma0_var=` explicitly.
+
 ## Method
 
 The notebook:
@@ -65,13 +74,13 @@ The notebook:
 ### SMI distribution: high-index pixels vs background ice-like pixels
 ![SMI histogram](figures/smi_histogram_region02_left_20230409.png)
 
-### Algorithmic uncertainty — window size and threshold sensitivity
+### Algorithmic uncertainty - window size and threshold sensitivity
 ![Window and threshold sensitivity](figures/smi_window_threshold_sensitivity_region02_left_20230409.png)
 
-### Algorithmic uncertainty — component sensitivity (height-only, backscatter-only, combined)
+### Algorithmic uncertainty - component sensitivity (height-only, backscatter-only, combined)
 ![Component sensitivity](figures/smi_component_sensitivity_region02_left_20230409.png)
 
-### Artifact checks — left/right swath behavior and row/column SMI patterns
+### Artifact checks - left/right swath behavior and row/column SMI patterns
 ![Artifact checks](figures/smi_artifact_checks_region02_20230409.png)
 
 ### Multi-date SMI persistence across three Region 02 scenes (April 9, April 10, June 16)
@@ -96,7 +105,7 @@ Generated figures are saved in `figures/`:
 - `smi_window_threshold_sensitivity_region02_left_20230409.png`: high-index area and feature count versus window size and threshold.
 - `smi_component_sensitivity_region02_left_20230409.png`: high-index area and feature count for height-only, backscatter-only, and combined SMI.
 - `smi_artifact_checks_region02_20230409.png`: visual checks for left/right swath behavior and row/column SMI patterns.
-- `smi_persistence_region02_left.png`: SMI maps for all three Region 02 dates side-by-side plus a persistence count map (0–3 dates high-index), with pairwise Jaccard similarity table.
+- `smi_persistence_region02_left.png`: SMI maps for all three Region 02 dates side-by-side plus a persistence count map (0-3 dates high-index), with pairwise Jaccard similarity table.
 
 Current 1 km-window prototype result:
 
@@ -134,12 +143,24 @@ The current notebook prioritizes the algorithmic uncertainty layer because it is
 
 ## Reproducibility
 
+Install the utility module and dependencies in editable mode:
+
+```bash
+python -m pip install -e .[dev]
+```
+
 Run the notebook from this folder:
 
 ```bash
 jupyter nbconvert --to notebook --execute --inplace swot_landfast_morphology_probe.ipynb --ExecutePreprocessor.timeout=900
 ```
 
+Run the focused utility tests:
+
+```bash
+pytest
+```
+
 The notebook caches NetCDF files in `data/raw/` and regenerates PNGs in `figures/`.
 
-Main Python dependencies: `xarray`, `numpy`, `pandas`, `scipy`, `matplotlib`, `pyproj`, `netCDF4`, `scikit-image`, and `requests`.
+Main Python dependencies: `xarray`, `numpy`, `pandas`, `scipy`, `matplotlib`, `pyproj`, `netCDF4`, `scikit-image`, and `requests`. The optional `dev` extra adds `pytest`.

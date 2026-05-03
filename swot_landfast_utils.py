@@ -116,30 +116,87 @@ def _netcdf_groups(path: str | Path) -> list[str]:
         return list(dataset.groups.keys())
 
 
-def open_swot(path: str | Path, swath: str = "left") -> xr.Dataset:
-    """Open a SWOT NetCDF file and standardize common variable names."""
+LON_VAR_CANDIDATES = ("longitude", "lon")
+LAT_VAR_CANDIDATES = ("latitude", "lat")
+HEIGHT_VAR_CANDIDATES = (
+    "sea_ice_height",
+    "freeboard",
+    "ssh_karin",
+    "ssha_karin",
+    "height",
+)
+SIGMA0_VAR_CANDIDATES = ("backscatter", "sig0_karin", "sigma0_karin", "sigma0")
+ICE_TYPE_VAR_CANDIDATES = ("ice_type_flag", "ice_type")
+
+
+def _first_present(ds: xr.Dataset, candidates: Iterable[str]) -> str | None:
+    """Return the first candidate variable present in an xarray Dataset."""
+    for candidate in candidates:
+        if candidate in ds:
+            return candidate
+    return None
+
+
+def _infer_swot_product_format(ds: xr.Dataset) -> str:
+    """Classify a standardized SWOT input format from its native variable names."""
+    if "sea_ice_height" in ds or "freeboard" in ds or "backscatter" in ds:
+        return "umd_zenodo"
+    if "ssh_karin" in ds or "sig0_karin" in ds:
+        return "swot_l2_karin"
+    return "unknown"
+
+
+def open_swot(
+    path: str | Path,
+    swath: str = "left",
+    height_var: str | None = None,
+    sigma0_var: str | None = None,
+) -> xr.Dataset:
+    """Open a SWOT-like NetCDF file and standardize common variable names.
+
+    Supports the UMD Zenodo sea-ice files used by this prototype and the common
+    SWOT L2 KaRIn convention where left/right groups contain ``ssh_karin`` and
+    ``sig0_karin``. ``height_var`` and ``sigma0_var`` allow explicit overrides
+    when working with another derived product.
+    """
     path = Path(path)
     groups = _netcdf_groups(path)
     group = swath if swath in groups else None
     ds = xr.open_dataset(path, group=group, decode_times=False, mask_and_scale=True)
 
+    product_format = _infer_swot_product_format(ds)
+    lon_var = _first_present(ds, LON_VAR_CANDIDATES)
+    lat_var = _first_present(ds, LAT_VAR_CANDIDATES)
+    height_source = height_var or _first_present(ds, HEIGHT_VAR_CANDIDATES)
+    sigma0_source = sigma0_var or _first_present(ds, SIGMA0_VAR_CANDIDATES)
+    ice_type_source = _first_present(ds, ICE_TYPE_VAR_CANDIDATES)
+
+    missing = []
+    if lon_var is None:
+        missing.append("longitude/lon")
+    if lat_var is None:
+        missing.append("latitude/lat")
+    if height_source is None or height_source not in ds:
+        missing.append("height/freeboard/ssh_karin")
+    if sigma0_source is None or sigma0_source not in ds:
+        missing.append("backscatter/sig0_karin")
+    if missing:
+        raise ValueError(
+            f"Could not standardize {path.name}"
+            f"{' group ' + group if group else ''}; missing {', '.join(missing)}."
+        )
+
     rename: dict[str, str] = {}
-    if "longitude" in ds:
-        rename["longitude"] = "lon"
-    if "latitude" in ds:
-        rename["latitude"] = "lat"
-    if "sea_ice_height" in ds:
-        rename["sea_ice_height"] = "height"
-        height_source = "sea_ice_height"
-    elif "freeboard" in ds:
-        rename["freeboard"] = "height"
-        height_source = "freeboard"
-    else:
-        height_source = ""
-    if "backscatter" in ds:
-        rename["backscatter"] = "sigma0"
-    if "ice_type_flag" in ds:
-        rename["ice_type_flag"] = "ice_type"
+    if lon_var != "lon":
+        rename[lon_var] = "lon"
+    if lat_var != "lat":
+        rename[lat_var] = "lat"
+    if height_source != "height":
+        rename[height_source] = "height"
+    if sigma0_source != "sigma0":
+        rename[sigma0_source] = "sigma0"
+    if ice_type_source and ice_type_source != "ice_type":
+        rename[ice_type_source] = "ice_type"
     ds = ds.rename(rename)
 
     if "lon" in ds:
@@ -153,6 +210,8 @@ def open_swot(path: str | Path, swath: str = "left") -> xr.Dataset:
             "source_path": str(path),
             "swath": swath if group else "root",
             "height_source": height_source,
+            "sigma0_source": sigma0_source,
+            "product_format": product_format,
         }
     )
     return ds
