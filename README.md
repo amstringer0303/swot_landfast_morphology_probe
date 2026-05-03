@@ -10,9 +10,9 @@ SWOT is the first spaceborne instrument with continuous 2D Ka-band height and ba
 
 This cannot be answered with along-track data alone.
 
-## Novelty position
+## About
 
-This prototype is not claiming that SWOT ridge detection is novel. Kacimi et al. (2025, GRL) demonstrated lead/floe discrimination and freeboard. A May 2025 ESS preprint used this same dataset to show ridge detection, 3D freeboard, and daily velocity. Neither paper characterises the 2D spatial structure of the morphology field.
+Kacimi et al. (2025, GRL) demonstrated lead/floe discrimination and freeboard. A May 2025 ESS preprint used this same dataset to show ridge detection, 3D freeboard, and daily velocity. Neither paper characterises the 2D spatial structure of the morphology field.
 
 The specific additions here:
 1. A stability morphology index (SMI) combining height roughness, gradient, and backscatter texture.
