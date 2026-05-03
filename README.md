@@ -47,6 +47,26 @@ The notebook:
 9. Collocates the SMI to ICESat-2 points with nearest-neighbor sampling in a local projected coordinate system.
 10. Runs algorithmic uncertainty checks for window size, threshold choice, component choice, swath-side differences, and row/column structure.
 
+## Figures
+
+### Main result: SWOT height, sigma0, SMI, and high-index roughness features
+![Four-panel SMI map with ICESat-2 overlay](figures/four_panel_smi_region02_left_20230409.png)
+
+### ICESat-2 height cross-section through a high-SMI feature
+![ICESat-2 cross-section vs SWOT SMI](figures/icesat2_smi_cross_section_region02_left_gt2l.png)
+
+### SMI distribution: high-index pixels vs background ice-like pixels
+![SMI histogram](figures/smi_histogram_region02_left_20230409.png)
+
+### Algorithmic uncertainty — window size and threshold sensitivity
+![Window and threshold sensitivity](figures/smi_window_threshold_sensitivity_region02_left_20230409.png)
+
+### Algorithmic uncertainty — component sensitivity (height-only, backscatter-only, combined)
+![Component sensitivity](figures/smi_component_sensitivity_region02_left_20230409.png)
+
+### Artifact checks — left/right swath behavior and row/column SMI patterns
+![Artifact checks](figures/smi_artifact_checks_region02_20230409.png)
+
 ## Outputs
 
 Generated figures are saved in `figures/`:
