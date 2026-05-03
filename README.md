@@ -67,6 +67,9 @@ The notebook:
 ### Artifact checks — left/right swath behavior and row/column SMI patterns
 ![Artifact checks](figures/smi_artifact_checks_region02_20230409.png)
 
+### Multi-date SMI persistence across three Region 02 scenes (April 9, April 10, June 16)
+![SMI persistence map](figures/smi_persistence_region02_left.png)
+
 ## Outputs
 
 Generated figures are saved in `figures/`:
@@ -77,6 +80,7 @@ Generated figures are saved in `figures/`:
 - `smi_window_threshold_sensitivity_region02_left_20230409.png`: high-index area and feature count versus window size and threshold.
 - `smi_component_sensitivity_region02_left_20230409.png`: high-index area and feature count for height-only, backscatter-only, and combined SMI.
 - `smi_artifact_checks_region02_20230409.png`: visual checks for left/right swath behavior and row/column SMI patterns.
+- `smi_persistence_region02_left.png`: SMI maps for all three Region 02 dates side-by-side plus a persistence count map (0–3 dates high-index), with pairwise Jaccard similarity table.
 
 Current 1 km-window prototype result:
 

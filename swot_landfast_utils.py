@@ -603,6 +603,104 @@ def component_sensitivity_table(
     return pd.DataFrame(rows)
 
 
+def make_common_grid(
+    lon_arrays: list[np.ndarray],
+    lat_arrays: list[np.ndarray],
+    valid_arrays: list[np.ndarray],
+    resolution_deg: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Regular lon/lat grid covering the union of valid pixels from all swaths."""
+    all_lon = np.concatenate([lon[v] for lon, v in zip(lon_arrays, valid_arrays)])
+    all_lat = np.concatenate([lat[v] for lat, v in zip(lat_arrays, valid_arrays)])
+    lon_centers = np.arange(np.nanmin(all_lon), np.nanmax(all_lon) + resolution_deg, resolution_deg)
+    lat_centers = np.arange(np.nanmin(all_lat), np.nanmax(all_lat) + resolution_deg, resolution_deg)
+    return lon_centers, lat_centers
+
+
+def rasterize_smi(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    smi: np.ndarray,
+    high_index: np.ndarray,
+    valid: np.ndarray,
+    lon_centers: np.ndarray,
+    lat_centers: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Bin SMI and high-index mask onto a regular grid using mean aggregation.
+
+    Returns (smi_grid, hi_fraction_grid) both shaped (n_lat, n_lon).
+    NaN where no valid native pixels fell in that bin.
+    """
+    from scipy.stats import binned_statistic_2d
+
+    res = float(lon_centers[1] - lon_centers[0]) if len(lon_centers) > 1 else 0.01
+    lon_edges = np.append(lon_centers - res / 2, lon_centers[-1] + res / 2)
+    lat_edges = np.append(lat_centers - res / 2, lat_centers[-1] + res / 2)
+
+    lon_flat = lon[valid]
+    lat_flat = lat[valid]
+    smi_flat = np.where(np.isfinite(smi[valid]), smi[valid], np.nan)
+    hi_flat = high_index[valid].astype(float)
+
+    def _bin(values: np.ndarray) -> np.ndarray:
+        finite = np.isfinite(values)
+        if not finite.any():
+            return np.full((len(lat_centers), len(lon_centers)), np.nan)
+        result, _, _, _ = binned_statistic_2d(
+            lon_flat[finite], lat_flat[finite], values[finite],
+            statistic="mean", bins=[lon_edges, lat_edges],
+        )
+        return result.T  # (lat, lon)
+
+    smi_grid = _bin(smi_flat)
+    hi_grid = _bin(hi_flat)
+    return smi_grid, hi_grid
+
+
+def persistence_count(
+    hi_grids: list[np.ndarray],
+    hi_threshold: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Count how many dates each grid cell is high-index.
+
+    Parameters
+    ----------
+    hi_grids:
+        List of hi_fraction arrays from rasterize_smi, float with NaN where no data.
+    hi_threshold:
+        Mean fraction cutoff to call a cell high-index for a given date.
+
+    Returns
+    -------
+    count_grid : float array, NaN where no date has coverage.
+    coverage_grid : int array, number of dates with data in each cell.
+    """
+    shape = hi_grids[0].shape
+    count = np.zeros(shape, dtype=float)
+    coverage = np.zeros(shape, dtype=int)
+    for g in hi_grids:
+        has_data = np.isfinite(g)
+        coverage += has_data.astype(int)
+        count += np.where(has_data, (g >= hi_threshold).astype(float), 0.0)
+    count_grid = np.where(coverage > 0, count, np.nan)
+    return count_grid, coverage
+
+
+def jaccard_similarity(
+    hi_a: np.ndarray,
+    hi_b: np.ndarray,
+    hi_threshold: float = 0.5,
+) -> float:
+    """Jaccard similarity between two hi_fraction grids over their shared coverage."""
+    both = np.isfinite(hi_a) & np.isfinite(hi_b)
+    if not both.any():
+        return np.nan
+    a = hi_a[both] >= hi_threshold
+    b = hi_b[both] >= hi_threshold
+    union = int((a | b).sum())
+    return float((a & b).sum() / union) if union > 0 else np.nan
+
+
 def swath_axis_artifact_summary(index: np.ndarray, valid_mask: np.ndarray) -> pd.DataFrame:
     """Simple diagnostic for row/column index structure that could indicate striping."""
     index = np.asarray(index, dtype=float)
